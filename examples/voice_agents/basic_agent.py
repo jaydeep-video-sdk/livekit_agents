@@ -20,7 +20,7 @@ from livekit.agents import (
 )
 from livekit.agents.llm import function_tool
 from livekit.agents.voice.transcription.filters import filter_markdown
-from livekit.plugins import deepgram, openai, silero
+from livekit.plugins import deepgram, google, silero, sarvam
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 # uncomment to enable Krisp background voice/noise cancellation
@@ -75,10 +75,6 @@ class MyAgent(Agent):
         return "sunny with a temperature of 70 degrees."
 
 
-def prewarm(proc: JobProcess):
-    proc.userdata["vad"] = silero.VAD.load()
-
-
 async def entrypoint(ctx: JobContext):
     # each log entry will include these fields
     ctx.log_context_fields = {
@@ -86,18 +82,20 @@ async def entrypoint(ctx: JobContext):
     }
 
     session = AgentSession(
-        vad=ctx.proc.userdata["vad"],
         # any combination of STT, LLM, TTS, or realtime API can be used
-        llm=openai.LLM(model="gpt-4o-mini"),
+        llm=google.LLM(model="gemini-2.0-flash-001"),
         stt=deepgram.STT(model="nova-3", language="multi"),
-        tts=openai.TTS(voice="ash"),
+        tts=sarvam.TTS(
+      target_language_code="hi-IN",
+      speaker="anushka",
+   ),
         # allow the LLM to generate a response while waiting for the end of turn
         preemptive_generation=True,
-        # sometimes background noise could interrupt the agent session, these are considered false positive interruptions
-        # when it's detected, you may resume the agent's speech
+        # without VAD, we'll rely on the STT to detect speech
+        # these settings help with handling background noise
         resume_false_interruption=True,
         false_interruption_timeout=1.0,
-        min_interruption_duration=0.2,  # with false interruption resume, interruption can be more sensitive
+        min_interruption_duration=0.2,
         # use LiveKit's turn detection model
         turn_detection=MultilingualModel(),
     )
@@ -129,4 +127,4 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
